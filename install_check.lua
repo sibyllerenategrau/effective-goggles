@@ -59,6 +59,17 @@ if Config then
     else
         print("  ^3!^7 Admin notifications disabled")
     end
+    
+    -- Check spawn immunity configuration (NEW)
+    if Config.Detection and Config.Detection.Position and Config.Detection.Position.spawnImmunity then
+        if Config.Detection.Position.spawnImmunity.enabled then
+            print("  ^2✓^7 Spawn immunity enabled (" .. (Config.Detection.Position.spawnImmunity.duration/1000) .. "s duration)")
+        else
+            print("  ^3!^7 Spawn immunity disabled")
+        end
+    else
+        print("  ^1✗^7 Spawn immunity not configured")
+    end
 else
     print("  ^1✗^7 Config not loaded")
 end
