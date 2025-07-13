@@ -16,6 +16,10 @@ Un système anticheat complet pour FiveM qui détecte les triches de noclip et a
 - **Speed Hack** : Détecte les modifications de vitesse des véhicules
 - **Manipulation de l'environnement** : Détecte les changements de temps/météo
 - **Injection de menus** : Détecte les tentatives d'injection de menus de triche
+- **Spawn de véhicules** : Détecte le spawn excessif de véhicules (NOUVEAU)
+- **Invisibilité** : Détecte les manipulations de transparence/visibilité (NOUVEAU)
+- **Manipulation d'entités** : Détecte le spawn d'objets/props (NOUVEAU)
+- **Manipulation de modèle** : Détecte les changements de modèle de joueur non autorisés (NOUVEAU)
 
 ### Système de Validation de Position
 - **Zones interdites** : Vérification des positions dans des zones blacklistées
@@ -35,12 +39,28 @@ Un système anticheat complet pour FiveM qui détecte les triches de noclip et a
 ```lua
 Config.Detection.Noclip = {
     enabled = true,
-    checkInterval = 500, -- Intervalle de vérification en millisecondes
-    speedThreshold = 15.0, -- Seuil de vitesse en m/s
-    heightThreshold = 5.0, -- Hauteur maximale sans support
-    teleportDistance = 50.0, -- Distance de téléportation suspecte
-    maxWarnings = 3, -- Nombre d'avertissements avant sanction
+    checkInterval = 250, -- Intervalle de vérification en millisecondes (plus fréquent)
+    speedThreshold = 8.0, -- Seuil de vitesse en m/s (plus strict)
+    heightThreshold = 2.5, -- Hauteur maximale sans support (plus strict)
+    teleportDistance = 20.0, -- Distance de téléportation suspecte (plus strict)
+    maxWarnings = 1, -- Nombre d'avertissements avant sanction (plus strict)
     punishment = "kick" -- Type de sanction : "kick", "ban", "warn"
+}
+
+-- Nouvelle détection de spawn de véhicules
+Config.Detection.VehicleSpawning = {
+    enabled = true,
+    maxVehiclesPerPlayer = 3,
+    spawnRateLimit = 1, -- Max 1 véhicule par minute
+    detectionRadius = 50.0,
+    punishment = "ban"
+}
+
+-- Nouvelle détection d'invisibilité
+Config.Detection.Invisibility = {
+    enabled = true,
+    minAlphaThreshold = 50, -- Valeur alpha minimale (0-255)
+    punishment = "kick"
 }
 ```
 

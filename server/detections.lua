@@ -313,6 +313,9 @@ AddEventHandler('anticheat:suspiciousActivity', function(activityType, reason)
     elseif activityType == "entity_manipulation" then -- NEW
         maxWarnings = 1 -- Immediate action for entity spawning
         punishment = "ban"
+    elseif activityType == "player_model" then -- NEW
+        maxWarnings = 1 -- Immediate action for model manipulation
+        punishment = "ban"
     end
     
     if warningCount >= maxWarnings then

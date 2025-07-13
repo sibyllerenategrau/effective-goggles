@@ -15,7 +15,12 @@ local monitoringData = {
     lastVehicleSpawnTime = 0,
     vehicleSpawnCount = 0,
     entityTracking = {}, -- Track entities around player
-    lastAlphaCheck = 0
+    lastAlphaCheck = 0,
+    playerModelTracking = { -- Track player model changes
+        lastModel = 0,
+        modelChanges = {},
+        lastModelChangeTime = 0
+    }
 }
 
 -- Advanced noclip detection patterns
@@ -54,6 +59,9 @@ function AnticheataMonitoring.StartAdvancedMonitoring()
                 
                 -- NEW: Check for entity manipulation
                 AnticheataMonitoring.CheckEntityManipulation(playerPed)
+                
+                -- NEW: Check for player model manipulation
+                AnticheataMonitoring.CheckPlayerModelManipulation(playerPed)
             end
         end
     end)
@@ -560,3 +568,73 @@ end)
 
 -- Export monitoring functions
 _G.AnticheataMonitoring = AnticheataMonitoring
+
+-- NEW: Check for player model manipulation
+function AnticheataMonitoring.CheckPlayerModelManipulation(playerPed)
+    if not Config.Detection.PlayerModel.enabled then
+        return
+    end
+    
+    local currentTime = GetGameTimer()
+    local currentModel = GetEntityModel(playerPed)
+    
+    -- Initialize tracking if not exists
+    if monitoringData.playerModelTracking.lastModel == 0 then
+        monitoringData.playerModelTracking.lastModel = currentModel
+        return
+    end
+    
+    -- Check if model changed
+    if currentModel ~= monitoringData.playerModelTracking.lastModel then
+        table.insert(monitoringData.playerModelTracking.modelChanges, {
+            fromModel = monitoringData.playerModelTracking.lastModel,
+            toModel = currentModel,
+            changeTime = currentTime
+        })
+        
+        monitoringData.playerModelTracking.lastModel = currentModel
+        monitoringData.playerModelTracking.lastModelChangeTime = currentTime
+        
+        -- Check for allowed models (if configured)
+        if #Config.Detection.PlayerModel.allowedModels > 0 then
+            local modelAllowed = false
+            for _, allowedModel in pairs(Config.Detection.PlayerModel.allowedModels) do
+                if currentModel == allowedModel then
+                    modelAllowed = true
+                    break
+                end
+            end
+            
+            if not modelAllowed then
+                TriggerServerEvent('anticheat:suspiciousActivity', 'player_model', 
+                    ('Unauthorized player model: %d'):format(currentModel))
+                return
+            end
+        end
+        
+        -- Check for rapid model switching
+        if Config.Detection.PlayerModel.detectModelChanges then
+            local oneMinuteAgo = currentTime - 60000
+            local recentChanges = 0
+            
+            for _, change in pairs(monitoringData.playerModelTracking.modelChanges) do
+                if change.changeTime > oneMinuteAgo then
+                    recentChanges = recentChanges + 1
+                end
+            end
+            
+            if recentChanges > Config.Detection.PlayerModel.maxModelChangesPerMinute then
+                TriggerServerEvent('anticheat:suspiciousActivity', 'player_model', 
+                    ('Rapid model switching: %d changes in 1 minute (max: %d)'):format(recentChanges, Config.Detection.PlayerModel.maxModelChangesPerMinute))
+            end
+        end
+        
+        -- Clean up old model changes (older than 5 minutes)
+        local fiveMinutesAgo = currentTime - 300000
+        for i = #monitoringData.playerModelTracking.modelChanges, 1, -1 do
+            if monitoringData.playerModelTracking.modelChanges[i].changeTime < fiveMinutesAgo then
+                table.remove(monitoringData.playerModelTracking.modelChanges, i)
+            end
+        end
+    end
+end

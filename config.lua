@@ -86,6 +86,18 @@ Config.Detection = {
         maxEntitiesPerPlayer = 5, -- Max entities a player can have around them
         detectionRadius = 30.0, -- Radius around player to check for spawned entities
         punishment = "ban"
+    },
+    
+    -- Player Model Manipulation Detection (NEW)
+    PlayerModel = {
+        enabled = true,
+        checkInterval = 5000,
+        punishment = "ban",
+        allowedModels = { -- Only allow these ped models (empty = allow all default)
+            -- Add specific model hashes here if you want to restrict models
+        },
+        detectModelChanges = true, -- Detect rapid model switching
+        maxModelChangesPerMinute = 2
     }
 }
 
