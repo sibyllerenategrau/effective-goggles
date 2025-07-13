@@ -6,7 +6,12 @@ local lastUpdate = 0
 -- Helper function to check if entity is on ground (replacement for non-existent IsEntityOnGround)
 local function CheckIfEntityOnGround(entity)
     local position = GetEntityCoords(entity)
-    local groundZ = GetGroundZFor_3dCoord(position.x, position.y, position.z, false)
+    local found, groundZ = GetGroundZFor_3dCoord(position.x, position.y, position.z, false)
+    
+    -- If ground wasn't found, assume entity is not on ground
+    if not found then
+        return false
+    end
     
     -- Consider entity on ground if within 2 meters of ground level
     local groundThreshold = 2.0
