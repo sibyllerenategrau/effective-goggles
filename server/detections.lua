@@ -25,25 +25,57 @@ function AnticheataDetections.CheckNoclip(playerId, position, velocity, inVehicl
     local timeInSeconds = timeDelta / 1000.0
     local calculatedSpeed = distance / timeInSeconds
     
-    -- Detection 1: Speed check
+    -- Initialize violation counters if not exist
+    if not playerData.violations then
+        playerData.violations = {
+            noclip = {count = 0, consecutive = 0, lastViolation = 0},
+            teleport = {count = 0, consecutive = 0, lastViolation = 0},
+            speed = {count = 0, consecutive = 0, lastViolation = 0}
+        }
+    end
+    
+    -- Detection 1: Enhanced speed check
     if not inVehicle and calculatedSpeed > Config.Detection.Noclip.speedThreshold then
-        local reason = ("Suspicious speed: %.2f m/s (threshold: %.2f m/s)"):format(calculatedSpeed, Config.Detection.Noclip.speedThreshold)
+        playerData.violations.speed.count = playerData.violations.speed.count + 1
+        playerData.violations.speed.consecutive = playerData.violations.speed.consecutive + 1
+        playerData.violations.speed.lastViolation = currentTime
+        
+        local reason = ("Suspicious speed: %.2f m/s (threshold: %.2f m/s) - Violation #%d"):format(
+            calculatedSpeed, Config.Detection.Noclip.speedThreshold, playerData.violations.speed.count)
         AnticheataDetections.HandleNoclipDetection(playerId, reason, "speed")
+    else
+        -- Reset consecutive counter if no violation
+        if currentTime - playerData.violations.speed.lastViolation > 5000 then
+            playerData.violations.speed.consecutive = 0
+        end
     end
     
-    -- Detection 2: Teleportation check
+    -- Detection 2: Enhanced teleportation check with velocity validation
     if distance > Config.Detection.Noclip.teleportDistance and timeInSeconds < 1.0 then
-        local reason = ("Teleportation detected: %.2f meters in %.2f seconds"):format(distance, timeInSeconds)
-        AnticheataDetections.HandleNoclipDetection(playerId, reason, "teleport")
+        -- Additional validation: check if velocity supports this movement
+        local velocityDistance = #velocity * timeInSeconds
+        if math.abs(distance - velocityDistance) > distance * 0.5 then -- 50% tolerance for velocity mismatch
+            playerData.violations.teleport.count = playerData.violations.teleport.count + 1
+            playerData.violations.teleport.consecutive = playerData.violations.teleport.consecutive + 1
+            playerData.violations.teleport.lastViolation = currentTime
+            
+            local reason = ("Teleportation detected: %.2f meters in %.2f seconds (velocity mismatch: %.2f vs %.2f) - Violation #%d"):format(
+                distance, timeInSeconds, distance, velocityDistance, playerData.violations.teleport.count)
+            AnticheataDetections.HandleNoclipDetection(playerId, reason, "teleport")
+        end
+    else
+        if currentTime - playerData.violations.teleport.lastViolation > 5000 then
+            playerData.violations.teleport.consecutive = 0
+        end
     end
     
-    -- Detection 3: Height check (floating without support)
+    -- Detection 3: Improved height check with better ground detection
     if not inVehicle and not onGround then
         local heightAboveGround = position.z - playerData.lastGroundZ
         if heightAboveGround > Config.Detection.Noclip.heightThreshold then
             -- Check if player has been floating for too long
             local floatingTime = currentTime - (playerData.lastGroundTime or currentTime)
-            if floatingTime > 3000 then -- 3 seconds
+            if floatingTime > 2000 then -- Reduced from 3 seconds to 2 seconds
                 local reason = ("Floating %.2f meters above ground for %.2f seconds"):format(heightAboveGround, floatingTime / 1000.0)
                 AnticheataDetections.HandleNoclipDetection(playerId, reason, "floating")
             end
@@ -56,22 +88,41 @@ function AnticheataDetections.CheckNoclip(playerId, position, velocity, inVehicl
         })
     end
     
-    -- Detection 4: Collision bypass check (moving through walls)
+    -- Detection 4: Enhanced collision bypass check
     if not inVehicle then
         AnticheataDetections.CheckCollisionBypass(playerId, lastPos, position)
     end
     
-    -- Detection 5: Unnatural movement patterns
+    -- Detection 5: Enhanced unnatural movement patterns
     if not inVehicle and distance > 1.0 then
         local velocityChange = math.abs(speed - (playerData.lastSpeed or 0))
-        if velocityChange > 20.0 and timeInSeconds < 0.5 then
+        -- Tightened velocity change threshold
+        if velocityChange > Config.Detection.Noclip.velocityChangeThreshold and timeInSeconds < 0.5 then
             local reason = ("Unnatural velocity change: %.2f m/s in %.2f seconds"):format(velocityChange, timeInSeconds)
             AnticheataDetections.HandleNoclipDetection(playerId, reason, "velocity")
         end
+        
+        -- Detection for rapid movement patterns
+        if calculatedSpeed > Config.Detection.Noclip.rapidMovementThreshold then
+            playerData.violations.noclip.count = playerData.violations.noclip.count + 1
+            playerData.violations.noclip.consecutive = playerData.violations.noclip.consecutive + 1
+            playerData.violations.noclip.lastViolation = currentTime
+            
+            local reason = ("Rapid movement pattern: %.2f m/s over %.2f seconds - Violation #%d"):format(
+                calculatedSpeed, timeInSeconds, playerData.violations.noclip.count)
+            AnticheataDetections.HandleNoclipDetection(playerId, reason, "rapid_movement")
+        else
+            if currentTime - playerData.violations.noclip.lastViolation > 5000 then
+                playerData.violations.noclip.consecutive = 0
+            end
+        end
     end
     
-    -- Update last speed
-    AnticheataCore.UpdatePlayerData(playerId, {lastSpeed = speed})
+    -- Update last speed and violation tracking
+    AnticheataCore.UpdatePlayerData(playerId, {
+        lastSpeed = speed,
+        violations = playerData.violations
+    })
 end
 
 -- Check for collision bypass
@@ -98,15 +149,23 @@ function AnticheataDetections.CheckCollisionBypass(playerId, startPos, endPos)
     end
 end
 
--- Handle noclip detection
+-- Handle noclip detection with escalation based on consecutive violations
 function AnticheataDetections.HandleNoclipDetection(playerId, reason, detectionType)
+    local playerData = AnticheataCore.GetPlayerData(playerId)
+    local violationData = playerData.violations and playerData.violations[detectionType] or {consecutive = 1}
+    
+    -- Escalate punishment based on consecutive violations
+    local punishment = Config.Detection.Noclip.punishment
+    if violationData.consecutive >= Config.Detection.Noclip.consecutiveViolationLimit then
+        punishment = "ban" -- Escalate to ban for persistent violators
+    end
+    
     local warningCount = AnticheataCore.AddWarning(playerId, "noclip", reason)
     
     if warningCount >= Config.Detection.Noclip.maxWarnings then
-        AnticheataCore.PunishPlayer(playerId, "noclip", reason, Config.Detection.Noclip.punishment)
+        AnticheataCore.PunishPlayer(playerId, "noclip", reason, punishment)
     else
         -- Teleport player back to last safe position as a corrective measure
-        local playerData = AnticheataCore.GetPlayerData(playerId)
         if playerData and playerData.lastPosition then
             TriggerClientEvent('anticheat:teleportToPosition', playerId, playerData.lastPosition)
         end
@@ -214,3 +273,154 @@ end)
 
 -- Export functions
 _G.AnticheataDetections = AnticheataDetections
+
+-- God Mode Detection
+function AnticheataDetections.CheckGodMode(playerId, health, armor, lastHealth, lastArmor)
+    if not Config.Detection.GodMode.enabled then
+        return
+    end
+    
+    local playerData = AnticheataCore.GetPlayerData(playerId)
+    if not playerData then
+        return
+    end
+    
+    local currentTime = GetGameTimer()
+    local timeDelta = (currentTime - playerData.lastUpdate) / 1000.0 -- in seconds
+    
+    if timeDelta < 0.1 or timeDelta > 10.0 then
+        return
+    end
+    
+    -- Initialize god mode tracking
+    if not playerData.godModeData then
+        playerData.godModeData = {
+            suspiciousRegenCount = 0,
+            lastDamageTestTime = 0,
+            testFailures = 0,
+            lastTestHealth = health
+        }
+    end
+    
+    -- Check for suspicious health regeneration
+    if health > lastHealth then
+        local healthRegen = (health - lastHealth) / timeDelta
+        if healthRegen > Config.Detection.GodMode.maxHealthRegenerationRate then
+            playerData.godModeData.suspiciousRegenCount = playerData.godModeData.suspiciousRegenCount + 1
+            local reason = ("Suspicious health regeneration: %.2f HP/sec (max: %.2f)"):format(
+                healthRegen, Config.Detection.GodMode.maxHealthRegenerationRate)
+            AnticheataDetections.HandleGodModeDetection(playerId, reason)
+        end
+    end
+    
+    -- Check for suspicious armor regeneration
+    if armor > lastArmor then
+        local armorRegen = (armor - lastArmor) / timeDelta
+        if armorRegen > Config.Detection.GodMode.maxArmorRegenerationRate then
+            playerData.godModeData.suspiciousRegenCount = playerData.godModeData.suspiciousRegenCount + 1
+            local reason = ("Suspicious armor regeneration: %.2f armor/sec (max: %.2f)"):format(
+                armorRegen, Config.Detection.GodMode.maxArmorRegenerationRate)
+            AnticheataDetections.HandleGodModeDetection(playerId, reason)
+        end
+    end
+    
+    -- Periodic damage testing (increased frequency)
+    if currentTime - playerData.godModeData.lastDamageTestTime > Config.Detection.GodMode.checkInterval then
+        if math.random(1, 100) <= Config.Detection.GodMode.damageTestChance then
+            TriggerClientEvent('anticheat:performGodModeTest', playerId)
+            playerData.godModeData.lastDamageTestTime = currentTime
+            playerData.godModeData.lastTestHealth = health
+        end
+    end
+    
+    AnticheataCore.UpdatePlayerData(playerId, {godModeData = playerData.godModeData})
+end
+
+-- Handle god mode detection
+function AnticheataDetections.HandleGodModeDetection(playerId, reason)
+    local warningCount = AnticheataCore.AddWarning(playerId, "godmode", reason)
+    
+    if warningCount >= 1 then -- Immediate action for god mode
+        AnticheataCore.PunishPlayer(playerId, "godmode", reason, Config.Detection.GodMode.punishment)
+    end
+end
+
+-- Vehicle Speed Detection
+function AnticheataDetections.CheckVehicleSpeed(playerId, vehicle, speed, maxSpeed)
+    if not Config.Detection.VehicleSpeed.enabled then
+        return
+    end
+    
+    local playerData = AnticheataCore.GetPlayerData(playerId)
+    if not playerData then
+        return
+    end
+    
+    -- Initialize vehicle speed tracking
+    if not playerData.vehicleSpeedData then
+        playerData.vehicleSpeedData = {
+            violations = 0,
+            consecutive = 0,
+            lastViolation = 0
+        }
+    end
+    
+    local currentTime = GetGameTimer()
+    local speedThreshold = maxSpeed * Config.Detection.VehicleSpeed.speedMultiplierThreshold
+    
+    if speed > speedThreshold then
+        playerData.vehicleSpeedData.violations = playerData.vehicleSpeedData.violations + 1
+        playerData.vehicleSpeedData.consecutive = playerData.vehicleSpeedData.consecutive + 1
+        playerData.vehicleSpeedData.lastViolation = currentTime
+        
+        local reason = ("Vehicle speed hack: %.2f m/s (max: %.2f, threshold: %.2f) - Violation #%d"):format(
+            speed, maxSpeed, speedThreshold, playerData.vehicleSpeedData.violations)
+        
+        if playerData.vehicleSpeedData.consecutive >= Config.Detection.VehicleSpeed.consecutiveViolationLimit then
+            AnticheataCore.PunishPlayer(playerId, "speedhack", reason, Config.Detection.VehicleSpeed.punishment)
+            playerData.vehicleSpeedData.consecutive = 0 -- Reset after punishment
+        else
+            AnticheataCore.AddWarning(playerId, "speedhack", reason)
+        end
+    else
+        -- Reset consecutive counter if no violation for 5 seconds
+        if currentTime - playerData.vehicleSpeedData.lastViolation > 5000 then
+            playerData.vehicleSpeedData.consecutive = 0
+        end
+    end
+    
+    AnticheataCore.UpdatePlayerData(playerId, {vehicleSpeedData = playerData.vehicleSpeedData})
+end
+
+-- Handle god mode test results
+RegisterServerEvent('anticheat:godModeTestResult')
+AddEventHandler('anticheat:godModeTestResult', function(testPassed, finalHealth, originalHealth)
+    local playerId = source
+    
+    if Utils.IsPlayerWhitelisted(playerId) then
+        return
+    end
+    
+    local playerData = AnticheataCore.GetPlayerData(playerId)
+    if not playerData or not playerData.godModeData then
+        return
+    end
+    
+    if not testPassed then
+        playerData.godModeData.testFailures = playerData.godModeData.testFailures + 1
+        local reason = ("God mode test failed: health restored from %d to %d (failure #%d)"):format(
+            originalHealth - 1, finalHealth, playerData.godModeData.testFailures)
+        
+        if playerData.godModeData.testFailures >= Config.Detection.GodMode.consecutiveFailLimit then
+            AnticheataDetections.HandleGodModeDetection(playerId, reason)
+            playerData.godModeData.testFailures = 0 -- Reset after action
+        else
+            AnticheataCore.AddWarning(playerId, "godmode", reason)
+        end
+    else
+        -- Reset failure count on successful test
+        playerData.godModeData.testFailures = math.max(0, playerData.godModeData.testFailures - 1)
+    end
+    
+    AnticheataCore.UpdatePlayerData(playerId, {godModeData = playerData.godModeData})
+end)

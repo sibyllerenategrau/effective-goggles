@@ -34,9 +34,22 @@ function StartPositionMonitoring()
                 local speed = GetEntitySpeed(playerPed)
                 local inVehicle = IsPedInAnyVehicle(playerPed, false)
                 local onGround = IsEntityOnGround(playerPed)
+                local health = GetEntityHealth(playerPed)
+                local armor = GetPedArmour(playerPed)
                 
-                -- Send position update to server
-                TriggerServerEvent('anticheat:updatePosition', position, velocity, inVehicle, onGround, speed)
+                -- Get vehicle data if in vehicle
+                local vehicleData = nil
+                if inVehicle then
+                    local vehicle = GetVehiclePedIsIn(playerPed, false)
+                    vehicleData = {
+                        entity = vehicle,
+                        maxSpeed = GetVehicleModelMaxSpeed(GetEntityModel(vehicle)),
+                        model = GetEntityModel(vehicle)
+                    }
+                end
+                
+                -- Send enhanced position update to server
+                TriggerServerEvent('anticheat:updatePosition', position, velocity, inVehicle, onGround, speed, health, armor, vehicleData)
                 
                 lastPosition = position
                 lastUpdate = GetGameTimer()
@@ -55,8 +68,21 @@ AddEventHandler('anticheat:requestUpdate', function()
         local speed = GetEntitySpeed(playerPed)
         local inVehicle = IsPedInAnyVehicle(playerPed, false)
         local onGround = IsEntityOnGround(playerPed)
+        local health = GetEntityHealth(playerPed)
+        local armor = GetPedArmour(playerPed)
         
-        TriggerServerEvent('anticheat:updatePosition', position, velocity, inVehicle, onGround, speed)
+        -- Get vehicle data if in vehicle
+        local vehicleData = nil
+        if inVehicle then
+            local vehicle = GetVehiclePedIsIn(playerPed, false)
+            vehicleData = {
+                entity = vehicle,
+                maxSpeed = GetVehicleModelMaxSpeed(GetEntityModel(vehicle)),
+                model = GetEntityModel(vehicle)
+            }
+        end
+        
+        TriggerServerEvent('anticheat:updatePosition', position, velocity, inVehicle, onGround, speed, health, armor, vehicleData)
     end
 end)
 
@@ -157,6 +183,31 @@ function ShowNotification(message)
     AddTextComponentString(message)
     DrawNotification(false, false)
 end
+
+-- Handle god mode testing
+RegisterNetEvent('anticheat:performGodModeTest')
+AddEventHandler('anticheat:performGodModeTest', function()
+    local playerPed = PlayerPedId()
+    if DoesEntityExist(playerPed) then
+        local originalHealth = GetEntityHealth(playerPed)
+        
+        -- Temporarily reduce health by 1
+        SetEntityHealth(playerPed, originalHealth - 1)
+        
+        Wait(200) -- Wait 200ms
+        
+        local newHealth = GetEntityHealth(playerPed)
+        
+        -- Check if health was restored (indicating possible god mode)
+        if newHealth >= originalHealth then
+            TriggerServerEvent('anticheat:godModeTestResult', false, newHealth, originalHealth)
+        else
+            -- Restore original health if test was legitimate
+            SetEntityHealth(playerPed, originalHealth)
+            TriggerServerEvent('anticheat:godModeTestResult', true, newHealth, originalHealth)
+        end
+    end
+end)
 
 -- Initialize when resource starts
 AddEventHandler('onClientResourceStart', function(resourceName)
