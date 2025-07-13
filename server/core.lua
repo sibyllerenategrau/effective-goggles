@@ -15,12 +15,26 @@ function AnticheataCore.InitializePlayer(playerId)
         lastUpdate = GetGameTimer(),
         inVehicle = false,
         isAdmin = false,
-        connectionTime = GetGameTimer()
+        connectionTime = GetGameTimer(),
+        lastHealth = 200, -- Initialize with max health
+        lastArmor = 0,
+        violations = { -- Initialize violation tracking
+            noclip = {count = 0, consecutive = 0, lastViolation = 0},
+            teleport = {count = 0, consecutive = 0, lastViolation = 0},
+            speed = {count = 0, consecutive = 0, lastViolation = 0}
+        }
     }
     
     warnings[playerId] = {
         noclip = 0,
         position = 0,
+        godmode = 0, -- Added missing warning types
+        speedhack = 0,
+        collision_bypass = 0,
+        noclip_pattern = 0,
+        timehack = 0,
+        weatherhack = 0,
+        menu_injection = 0,
         total = 0
     }
     
@@ -53,7 +67,16 @@ end
 -- Add warning to player
 function AnticheataCore.AddWarning(playerId, detectionType, reason)
     if not warnings[playerId] then
-        warnings[playerId] = {noclip = 0, position = 0, total = 0}
+        warnings[playerId] = {
+            noclip = 0, position = 0, godmode = 0, speedhack = 0, 
+            collision_bypass = 0, noclip_pattern = 0, timehack = 0, 
+            weatherhack = 0, menu_injection = 0, total = 0
+        }
+    end
+    
+    -- Ensure the detection type exists in warnings
+    if warnings[playerId][detectionType] == nil then
+        warnings[playerId][detectionType] = 0
     end
     
     warnings[playerId][detectionType] = warnings[playerId][detectionType] + 1
@@ -137,7 +160,7 @@ AddEventHandler('anticheat:playerLoaded', function()
 end)
 
 RegisterServerEvent('anticheat:updatePosition')
-AddEventHandler('anticheat:updatePosition', function(position, velocity, inVehicle, onGround, speed)
+AddEventHandler('anticheat:updatePosition', function(position, velocity, inVehicle, onGround, speed, health, armor, vehicleData)
     local playerId = source
     
     if Utils.IsPlayerWhitelisted(playerId) then
@@ -149,16 +172,30 @@ AddEventHandler('anticheat:updatePosition', function(position, velocity, inVehic
         return
     end
     
+    local playerInfo = playerData[playerId]
+    
     -- Trigger detection checks
     AnticheataDetections.CheckNoclip(playerId, position, velocity, inVehicle, onGround, speed)
     AnticheataDetections.CheckPosition(playerId, position)
+    
+    -- God mode detection (if health/armor provided)
+    if health and armor then
+        AnticheataDetections.CheckGodMode(playerId, health, armor, playerInfo.lastHealth or health, playerInfo.lastArmor or armor)
+    end
+    
+    -- Vehicle speed detection (if in vehicle and vehicle data provided)
+    if inVehicle and vehicleData then
+        AnticheataDetections.CheckVehicleSpeed(playerId, vehicleData.entity, speed, vehicleData.maxSpeed)
+    end
     
     -- Update player data
     AnticheataCore.UpdatePlayerData(playerId, {
         lastPosition = position,
         lastVelocity = velocity,
         lastUpdate = GetGameTimer(),
-        inVehicle = inVehicle
+        inVehicle = inVehicle,
+        lastHealth = health,
+        lastArmor = armor
     })
 end)
 
