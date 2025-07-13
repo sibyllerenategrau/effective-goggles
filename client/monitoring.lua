@@ -319,8 +319,8 @@ function AnticheataMonitoring.CheckCollisionBypass(playerPed, position)
     end
     
     -- Additional check for underground/inside building detection
-    local groundZ = GetGroundZFor_3dCoord(position.x, position.y, position.z, false)
-    if position.z < groundZ - 3.0 then -- Player is significantly underground
+    local found, groundZ = GetGroundZFor_3dCoord(position.x, position.y, position.z, false)
+    if found and position.z < groundZ - 3.0 then -- Player is significantly underground
         TriggerServerEvent('anticheat:suspiciousActivity', 'collision_bypass', 
             ('Player underground: Z=%.2f, Ground=%.2f'):format(position.z, groundZ))
     end
