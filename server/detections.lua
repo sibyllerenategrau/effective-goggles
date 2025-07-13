@@ -75,7 +75,7 @@ function AnticheataDetections.CheckNoclip(playerId, position, velocity, inVehicl
         if heightAboveGround > Config.Detection.Noclip.heightThreshold then
             -- Check if player has been floating for too long
             local floatingTime = currentTime - (playerData.lastGroundTime or currentTime)
-            if floatingTime > 2000 then -- Reduced from 3 seconds to 2 seconds
+            if floatingTime > 1500 then -- Reduced from 2 seconds to 1.5 seconds
                 local reason = ("Floating %.2f meters above ground for %.2f seconds"):format(heightAboveGround, floatingTime / 1000.0)
                 AnticheataDetections.HandleNoclipDetection(playerId, reason, "floating")
             end
@@ -303,6 +303,18 @@ AddEventHandler('anticheat:suspiciousActivity', function(activityType, reason)
         punishment = "kick"
     elseif activityType == "timehack" or activityType == "weatherhack" then
         maxWarnings = 1 -- Immediate action for environment manipulation
+        punishment = "ban"
+    elseif activityType == "invisibility" then -- NEW
+        maxWarnings = 1 -- Immediate action for invisibility
+        punishment = "ban"
+    elseif activityType == "vehicle_spawning" then -- NEW
+        maxWarnings = 1 -- Immediate action for vehicle spawning
+        punishment = "ban"
+    elseif activityType == "entity_manipulation" then -- NEW
+        maxWarnings = 1 -- Immediate action for entity spawning
+        punishment = "ban"
+    elseif activityType == "player_model" then -- NEW
+        maxWarnings = 1 -- Immediate action for model manipulation
         punishment = "ban"
     end
     

@@ -28,13 +28,17 @@ function AnticheataCore.InitializePlayer(playerId)
     warnings[playerId] = {
         noclip = 0,
         position = 0,
-        godmode = 0, -- Added missing warning types
+        godmode = 0,
         speedhack = 0,
         collision_bypass = 0,
         noclip_pattern = 0,
         timehack = 0,
         weatherhack = 0,
         menu_injection = 0,
+        invisibility = 0, -- NEW
+        vehicle_spawning = 0, -- NEW
+        entity_manipulation = 0, -- NEW
+        player_model = 0, -- NEW
         total = 0
     }
     
@@ -70,7 +74,8 @@ function AnticheataCore.AddWarning(playerId, detectionType, reason)
         warnings[playerId] = {
             noclip = 0, position = 0, godmode = 0, speedhack = 0, 
             collision_bypass = 0, noclip_pattern = 0, timehack = 0, 
-            weatherhack = 0, menu_injection = 0, total = 0
+            weatherhack = 0, menu_injection = 0, invisibility = 0,
+            vehicle_spawning = 0, entity_manipulation = 0, player_model = 0, total = 0
         }
     end
     

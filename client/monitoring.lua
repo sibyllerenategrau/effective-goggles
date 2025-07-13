@@ -8,9 +8,19 @@ local monitoringData = {
     godModeChecks = 0,
     speedHackChecks = 0,
     lastVehicleCheck = 0,
-    lastVehicleSpeed = 0, -- Added missing field
+    lastVehicleSpeed = 0,
     suspiciousEvents = {},
-    environmentChecks = {}
+    environmentChecks = {},
+    spawnedVehicles = {}, -- Track vehicles spawned by player
+    lastVehicleSpawnTime = 0,
+    vehicleSpawnCount = 0,
+    entityTracking = {}, -- Track entities around player
+    lastAlphaCheck = 0,
+    playerModelTracking = { -- Track player model changes
+        lastModel = 0,
+        modelChanges = {},
+        lastModelChangeTime = 0
+    }
 }
 
 -- Advanced noclip detection patterns
@@ -40,6 +50,18 @@ function AnticheataMonitoring.StartAdvancedMonitoring()
                 
                 -- Advanced noclip pattern detection
                 AnticheataMonitoring.CheckNoclipPatterns(playerPed)
+                
+                -- NEW: Check for invisibility
+                AnticheataMonitoring.CheckInvisibility(playerPed)
+                
+                -- NEW: Check for vehicle spawning
+                AnticheataMonitoring.CheckVehicleSpawning(playerPed)
+                
+                -- NEW: Check for entity manipulation
+                AnticheataMonitoring.CheckEntityManipulation(playerPed)
+                
+                -- NEW: Check for player model manipulation
+                AnticheataMonitoring.CheckPlayerModelManipulation(playerPed)
             end
         end
     end)
@@ -188,13 +210,13 @@ function AnticheataMonitoring.CheckNoclipPatterns(playerPed)
     -- Check for rapid position changes
     table.insert(noclipPatterns.rapidPositionChanges, {pos = position, time = currentTime})
     
-    -- Keep only last 8 positions (reduced from 10)
-    if #noclipPatterns.rapidPositionChanges > 8 then
+    -- Keep only last 6 positions (reduced from 8)
+    if #noclipPatterns.rapidPositionChanges > 6 then
         table.remove(noclipPatterns.rapidPositionChanges, 1)
     end
     
     -- Analyze movement patterns with stricter detection
-    if #noclipPatterns.rapidPositionChanges >= 4 then
+    if #noclipPatterns.rapidPositionChanges >= 3 then -- Reduced from 4
         local totalDistance = 0
         local totalTime = 0
         local maxInstantDistance = 0
@@ -215,7 +237,7 @@ function AnticheataMonitoring.CheckNoclipPatterns(playerPed)
             end
             
             -- Check for instant teleportation (reduced threshold)
-            if distance > 15.0 and timeDelta < 200 then
+            if distance > 12.0 and timeDelta < 200 then -- Reduced from 15.0 meters
                 TriggerServerEvent('anticheat:suspiciousActivity', 'noclip_pattern', 
                     ('Instant movement detected: %.2f meters in %d ms'):format(distance, timeDelta))
             end
@@ -224,10 +246,10 @@ function AnticheataMonitoring.CheckNoclipPatterns(playerPed)
         local avgSpeed = totalDistance / (totalTime / 1000.0)
         
         -- Lowered speed threshold for stricter detection
-        if avgSpeed > 20.0 and not IsPedInAnyVehicle(playerPed, false) then
+        if avgSpeed > 15.0 and not IsPedInAnyVehicle(playerPed, false) then -- Reduced from 20.0
             noclipPatterns.abnormalMovementCount = noclipPatterns.abnormalMovementCount + 1
             
-            if noclipPatterns.abnormalMovementCount >= 2 then -- Reduced threshold
+            if noclipPatterns.abnormalMovementCount >= 1 then -- Reduced from 2 threshold
                 TriggerServerEvent('anticheat:suspiciousActivity', 'noclip_pattern', 
                     ('Noclip movement pattern: avg speed %.2f m/s, max instant: %.2f m'):format(avgSpeed, maxInstantDistance))
                 noclipPatterns.abnormalMovementCount = 0
@@ -284,10 +306,10 @@ function AnticheataMonitoring.CheckCollisionBypass(playerPed, position)
     end
     
     -- More sensitive detection: if player is surrounded by objects
-    if insideObjectCount >= 5 then -- Reduced from 4 to be more sensitive
+    if insideObjectCount >= 4 then -- Reduced from 5 to be more sensitive
         noclipPatterns.consecutiveCollisionFails = noclipPatterns.consecutiveCollisionFails + 1
         
-        if noclipPatterns.consecutiveCollisionFails >= 3 then -- Reduced threshold
+        if noclipPatterns.consecutiveCollisionFails >= 2 then -- Reduced from 3 threshold
             TriggerServerEvent('anticheat:suspiciousActivity', 'collision_bypass', 
                 ('Player inside solid objects: %d/%d collision rays hit'):format(insideObjectCount, #directions))
             noclipPatterns.consecutiveCollisionFails = 0
@@ -301,6 +323,195 @@ function AnticheataMonitoring.CheckCollisionBypass(playerPed, position)
     if position.z < groundZ - 3.0 then -- Player is significantly underground
         TriggerServerEvent('anticheat:suspiciousActivity', 'collision_bypass', 
             ('Player underground: Z=%.2f, Ground=%.2f'):format(position.z, groundZ))
+    end
+end
+
+-- NEW: Check for invisibility/alpha manipulation
+function AnticheataMonitoring.CheckInvisibility(playerPed)
+    local currentTime = GetGameTimer()
+    
+    -- Check every 1.5 seconds
+    if currentTime - monitoringData.lastAlphaCheck < 1500 then
+        return
+    end
+    
+    monitoringData.lastAlphaCheck = currentTime
+    
+    -- Get player alpha (transparency)
+    local alpha = GetEntityAlpha(playerPed)
+    
+    -- Check if player is too transparent (invisible)
+    if alpha < Config.Detection.Invisibility.minAlphaThreshold then
+        TriggerServerEvent('anticheat:suspiciousActivity', 'invisibility', 
+            ('Player invisibility detected: alpha value %d (min: %d)'):format(alpha, Config.Detection.Invisibility.minAlphaThreshold))
+    end
+    
+    -- Check if entity is set to not be visible
+    if not IsEntityVisible(playerPed) then
+        TriggerServerEvent('anticheat:suspiciousActivity', 'invisibility', 'Player entity set to invisible')
+    end
+    
+    -- Check for collision disabled (often used with invisibility)
+    if not DoesEntityHaveCollision(playerPed) then
+        TriggerServerEvent('anticheat:suspiciousActivity', 'invisibility', 'Player collision disabled')
+    end
+end
+
+-- NEW: Check for vehicle spawning near player
+function AnticheataMonitoring.CheckVehicleSpawning(playerPed)
+    local position = GetEntityCoords(playerPed)
+    local currentTime = GetGameTimer()
+    
+    -- Get all vehicles in area
+    local vehicles = {}
+    local vehicleHandle, vehicle = FindFirstVehicle()
+    local success
+    
+    repeat
+        local vehiclePos = GetEntityCoords(vehicle)
+        local distance = #(vector3(position.x, position.y, position.z) - vector3(vehiclePos.x, vehiclePos.y, vehiclePos.z))
+        
+        if distance <= Config.Detection.VehicleSpawning.detectionRadius then
+            table.insert(vehicles, vehicle)
+        end
+        
+        success, vehicle = FindNextVehicle(vehicleHandle)
+    until not success
+    
+    EndFindVehicle(vehicleHandle)
+    
+    -- Check for new vehicles that weren't there before
+    for _, vehicle in pairs(vehicles) do
+        local found = false
+        for _, trackedVehicle in pairs(monitoringData.spawnedVehicles) do
+            if vehicle == trackedVehicle.entity then
+                found = true
+                break
+            end
+        end
+        
+        if not found then
+            -- Check if vehicle was recently created
+            local vehicleAge = GetGameTimer() - GetEntityHandle(vehicle)
+            if vehicleAge < 5000 then -- Vehicle created within last 5 seconds
+                -- Check if player is the driver or very close to the vehicle
+                local vehiclePos = GetEntityCoords(vehicle)
+                local distance = #(vector3(position.x, position.y, position.z) - vector3(vehiclePos.x, vehiclePos.y, vehiclePos.z))
+                
+                if distance < 10.0 or GetPedInVehicleSeat(vehicle, -1) == playerPed then
+                    -- Track this vehicle spawn
+                    table.insert(monitoringData.spawnedVehicles, {
+                        entity = vehicle,
+                        spawnTime = currentTime,
+                        distance = distance
+                    })
+                    
+                    monitoringData.vehicleSpawnCount = monitoringData.vehicleSpawnCount + 1
+                    
+                    -- Check spawn rate (per minute)
+                    local oneMinuteAgo = currentTime - 60000
+                    local recentSpawns = 0
+                    for _, spawnedVehicle in pairs(monitoringData.spawnedVehicles) do
+                        if spawnedVehicle.spawnTime > oneMinuteAgo then
+                            recentSpawns = recentSpawns + 1
+                        end
+                    end
+                    
+                    if recentSpawns > Config.Detection.VehicleSpawning.spawnRateLimit then
+                        TriggerServerEvent('anticheat:suspiciousActivity', 'vehicle_spawning', 
+                            ('Excessive vehicle spawning: %d vehicles in 1 minute (limit: %d)'):format(recentSpawns, Config.Detection.VehicleSpawning.spawnRateLimit))
+                    end
+                    
+                    -- Check total vehicles around player
+                    if #vehicles > Config.Detection.VehicleSpawning.maxVehiclesPerPlayer then
+                        TriggerServerEvent('anticheat:suspiciousActivity', 'vehicle_spawning', 
+                            ('Too many vehicles around player: %d (max: %d)'):format(#vehicles, Config.Detection.VehicleSpawning.maxVehiclesPerPlayer))
+                    end
+                end
+            end
+        end
+    end
+    
+    -- Clean up old tracked vehicles (older than 5 minutes)
+    local fiveMinutesAgo = currentTime - 300000
+    for i = #monitoringData.spawnedVehicles, 1, -1 do
+        if monitoringData.spawnedVehicles[i].spawnTime < fiveMinutesAgo then
+            table.remove(monitoringData.spawnedVehicles, i)
+        end
+    end
+end
+
+-- NEW: Check for entity manipulation (spawning objects, props, etc.)
+function AnticheataMonitoring.CheckEntityManipulation(playerPed)
+    local position = GetEntityCoords(playerPed)
+    local currentTime = GetGameTimer()
+    
+    -- Get all objects/props in area
+    local objects = {}
+    local objectHandle, object = FindFirstObject()
+    local success
+    
+    repeat
+        local objectPos = GetEntityCoords(object)
+        local distance = #(vector3(position.x, position.y, position.z) - vector3(objectPos.x, objectPos.y, objectPos.z))
+        
+        if distance <= Config.Detection.EntityManipulation.detectionRadius then
+            table.insert(objects, object)
+        end
+        
+        success, object = FindNextObject(objectHandle)
+    until not success
+    
+    EndFindObject(objectHandle)
+    
+    -- Check for excessive entities around player
+    if #objects > Config.Detection.EntityManipulation.maxEntitiesPerPlayer then
+        TriggerServerEvent('anticheat:suspiciousActivity', 'entity_manipulation', 
+            ('Excessive entities around player: %d (max: %d)'):format(#objects, Config.Detection.EntityManipulation.maxEntitiesPerPlayer))
+    end
+    
+    -- Track new entities
+    for _, object in pairs(objects) do
+        local found = false
+        for _, trackedEntity in pairs(monitoringData.entityTracking) do
+            if object == trackedEntity.entity then
+                found = true
+                break
+            end
+        end
+        
+        if not found then
+            -- Check if entity was recently created
+            local entityAge = GetGameTimer() - GetEntityHandle(object)
+            if entityAge < 3000 then -- Entity created within last 3 seconds
+                table.insert(monitoringData.entityTracking, {
+                    entity = object,
+                    spawnTime = currentTime
+                })
+                
+                -- Check for rapid entity spawning
+                local thirtySecondsAgo = currentTime - 30000
+                local recentSpawns = 0
+                for _, trackedEntity in pairs(monitoringData.entityTracking) do
+                    if trackedEntity.spawnTime > thirtySecondsAgo then
+                        recentSpawns = recentSpawns + 1
+                    end
+                end
+                
+                if recentSpawns > 3 then -- More than 3 entities in 30 seconds
+                    TriggerServerEvent('anticheat:suspiciousActivity', 'entity_manipulation', 
+                        ('Rapid entity spawning: %d entities in 30 seconds'):format(recentSpawns))
+                end
+            end
+        end
+    end
+    
+    -- Clean up old tracked entities (older than 2 minutes)
+    local twoMinutesAgo = currentTime - 120000
+    for i = #monitoringData.entityTracking, 1, -1 do
+        if monitoringData.entityTracking[i].spawnTime < twoMinutesAgo then
+            table.remove(monitoringData.entityTracking, i)
+        end
     end
 end
 
@@ -357,3 +568,73 @@ end)
 
 -- Export monitoring functions
 _G.AnticheataMonitoring = AnticheataMonitoring
+
+-- NEW: Check for player model manipulation
+function AnticheataMonitoring.CheckPlayerModelManipulation(playerPed)
+    if not Config.Detection.PlayerModel.enabled then
+        return
+    end
+    
+    local currentTime = GetGameTimer()
+    local currentModel = GetEntityModel(playerPed)
+    
+    -- Initialize tracking if not exists
+    if monitoringData.playerModelTracking.lastModel == 0 then
+        monitoringData.playerModelTracking.lastModel = currentModel
+        return
+    end
+    
+    -- Check if model changed
+    if currentModel ~= monitoringData.playerModelTracking.lastModel then
+        table.insert(monitoringData.playerModelTracking.modelChanges, {
+            fromModel = monitoringData.playerModelTracking.lastModel,
+            toModel = currentModel,
+            changeTime = currentTime
+        })
+        
+        monitoringData.playerModelTracking.lastModel = currentModel
+        monitoringData.playerModelTracking.lastModelChangeTime = currentTime
+        
+        -- Check for allowed models (if configured)
+        if #Config.Detection.PlayerModel.allowedModels > 0 then
+            local modelAllowed = false
+            for _, allowedModel in pairs(Config.Detection.PlayerModel.allowedModels) do
+                if currentModel == allowedModel then
+                    modelAllowed = true
+                    break
+                end
+            end
+            
+            if not modelAllowed then
+                TriggerServerEvent('anticheat:suspiciousActivity', 'player_model', 
+                    ('Unauthorized player model: %d'):format(currentModel))
+                return
+            end
+        end
+        
+        -- Check for rapid model switching
+        if Config.Detection.PlayerModel.detectModelChanges then
+            local oneMinuteAgo = currentTime - 60000
+            local recentChanges = 0
+            
+            for _, change in pairs(monitoringData.playerModelTracking.modelChanges) do
+                if change.changeTime > oneMinuteAgo then
+                    recentChanges = recentChanges + 1
+                end
+            end
+            
+            if recentChanges > Config.Detection.PlayerModel.maxModelChangesPerMinute then
+                TriggerServerEvent('anticheat:suspiciousActivity', 'player_model', 
+                    ('Rapid model switching: %d changes in 1 minute (max: %d)'):format(recentChanges, Config.Detection.PlayerModel.maxModelChangesPerMinute))
+            end
+        end
+        
+        -- Clean up old model changes (older than 5 minutes)
+        local fiveMinutesAgo = currentTime - 300000
+        for i = #monitoringData.playerModelTracking.modelChanges, 1, -1 do
+            if monitoringData.playerModelTracking.modelChanges[i].changeTime < fiveMinutesAgo then
+                table.remove(monitoringData.playerModelTracking.modelChanges, i)
+            end
+        end
+    end
+end
