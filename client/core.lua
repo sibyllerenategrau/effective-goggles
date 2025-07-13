@@ -3,6 +3,16 @@ local isMonitoring = false
 local lastPosition = vector3(0, 0, 0)
 local lastUpdate = 0
 
+-- Helper function to check if entity is on ground (replacement for non-existent IsEntityOnGround)
+local function CheckIfEntityOnGround(entity)
+    local position = GetEntityCoords(entity)
+    local groundZ = GetGroundZFor_3dCoord(position.x, position.y, position.z, false)
+    
+    -- Consider entity on ground if within 2 meters of ground level
+    local groundThreshold = 2.0
+    return math.abs(position.z - groundZ) <= groundThreshold
+end
+
 -- Initialize client anticheat
 function InitializeClientAnticheat()
     local playerPed = PlayerPedId()
@@ -33,7 +43,7 @@ function StartPositionMonitoring()
                 local velocity = GetEntityVelocity(playerPed)
                 local speed = GetEntitySpeed(playerPed)
                 local inVehicle = IsPedInAnyVehicle(playerPed, false)
-                local onGround = IsEntityOnGround(playerPed)
+                local onGround = CheckIfEntityOnGround(playerPed)
                 local health = GetEntityHealth(playerPed)
                 local armor = GetPedArmour(playerPed)
                 
@@ -67,7 +77,7 @@ AddEventHandler('anticheat:requestUpdate', function()
         local velocity = GetEntityVelocity(playerPed)
         local speed = GetEntitySpeed(playerPed)
         local inVehicle = IsPedInAnyVehicle(playerPed, false)
-        local onGround = IsEntityOnGround(playerPed)
+        local onGround = CheckIfEntityOnGround(playerPed)
         local health = GetEntityHealth(playerPed)
         local armor = GetPedArmour(playerPed)
         
