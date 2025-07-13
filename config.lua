@@ -39,7 +39,7 @@ Config.Detection = {
         spawnImmunity = {
             enabled = true,
             duration = 15000, -- 15 seconds of immunity after spawn/respawn
-            undergroundOnly = true -- Only apply immunity to underground zone detection
+            undergroundOnly = true -- If true: only apply to Underground zone. If false: apply to ALL blacklisted zones
         }
     },
     

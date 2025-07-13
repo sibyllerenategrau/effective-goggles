@@ -190,12 +190,26 @@ function AnticheataDetections.CheckPosition(playerId, position)
         local isUndergroundZone = zoneName == "Underground"
         local hasSpawnImmunity = AnticheataCore.HasSpawnImmunity(playerId)
         
+        -- Apply spawn immunity only to underground zones if configured
         if isUndergroundZone and hasSpawnImmunity and Config.Detection.Position.spawnImmunity.undergroundOnly then
             -- Player has spawn immunity for underground zones, skip detection
             if Config.EnableDebug then
                 print(("[%s] Player %s in underground zone but has spawn immunity (%.1fs remaining)"):format(
                     Config.ResourceName, 
                     GetPlayerName(playerId),
+                    (playerData.spawnImmunity.duration - (GetGameTimer() - playerData.spawnImmunity.startTime)) / 1000.0
+                ))
+            end
+            return
+        end
+        
+        -- Apply spawn immunity to all blacklisted zones if undergroundOnly is false
+        if not Config.Detection.Position.spawnImmunity.undergroundOnly and hasSpawnImmunity then
+            if Config.EnableDebug then
+                print(("[%s] Player %s in blacklisted zone '%s' but has spawn immunity (%.1fs remaining)"):format(
+                    Config.ResourceName, 
+                    GetPlayerName(playerId),
+                    zoneName,
                     (playerData.spawnImmunity.duration - (GetGameTimer() - playerData.spawnImmunity.startTime)) / 1000.0
                 ))
             end
