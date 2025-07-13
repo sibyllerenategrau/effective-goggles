@@ -172,9 +172,14 @@ function AnticheataDetections.HandleNoclipDetection(playerId, reason, detectionT
     end
 end
 
--- Position validation
+-- Position validation with enhanced checks
 function AnticheataDetections.CheckPosition(playerId, position)
     if not Config.Detection.Position.enabled then
+        return
+    end
+    
+    local playerData = AnticheataCore.GetPlayerData(playerId)
+    if not playerData then
         return
     end
     
@@ -203,6 +208,38 @@ function AnticheataDetections.CheckPosition(playerId, position)
             -- Teleport player down
             local safePos = {x = position.x, y = position.y, z = 30.0}
             TriggerClientEvent('anticheat:teleportToPosition', playerId, safePos)
+        end
+    end
+    
+    -- Additional server-side validation
+    local currentTime = GetGameTimer()
+    local lastPos = playerData.lastPosition
+    
+    if lastPos then
+        local distance = Utils.GetDistance(position, lastPos)
+        local timeDelta = (currentTime - playerData.lastUpdate) / 1000.0
+        
+        -- Server-side teleportation validation (more strict on server)
+        if distance > 20.0 and timeDelta < 1.0 then
+            local calculatedSpeed = distance / timeDelta
+            if calculatedSpeed > 50.0 then -- Extremely fast movement
+                local reason = ("Server-side teleport validation failed: %.2f meters in %.2f seconds (%.2f m/s)"):format(
+                    distance, timeDelta, calculatedSpeed)
+                local warningCount = AnticheataCore.AddWarning(playerId, "position", reason)
+                
+                if warningCount >= 1 then -- Immediate action for extreme teleportation
+                    AnticheataCore.PunishPlayer(playerId, "position", reason, "kick")
+                else
+                    TriggerClientEvent('anticheat:teleportToPosition', playerId, lastPos)
+                end
+            end
+        end
+        
+        -- Check for impossible coordinate values
+        if math.abs(position.x) > 10000 or math.abs(position.y) > 10000 or position.z > 5000 or position.z < -2000 then
+            local reason = ("Impossible coordinates: %.2f, %.2f, %.2f"):format(position.x, position.y, position.z)
+            AnticheataCore.PunishPlayer(playerId, "position", reason, "kick")
+            return
         end
     end
 end
@@ -245,25 +282,28 @@ AddEventHandler('anticheat:suspiciousActivity', function(activityType, reason)
     
     local warningCount = AnticheataCore.AddWarning(playerId, activityType, reason)
     
-    -- Different thresholds for different activity types
+    -- Stricter thresholds and punishments for different activity types
     local maxWarnings = 2
     local punishment = "kick"
     
     if activityType == "godmode" then
-        maxWarnings = 2
+        maxWarnings = 1 -- Immediate action for god mode
         punishment = "ban"
     elseif activityType == "speedhack" then
-        maxWarnings = 3
+        maxWarnings = 2 -- Reduced from 3
         punishment = "kick"
     elseif activityType == "menu_injection" then
         maxWarnings = 1
         punishment = "ban"
     elseif activityType == "collision_bypass" then
-        maxWarnings = 2
+        maxWarnings = 2 -- Reduced from original
         punishment = "kick"
     elseif activityType == "noclip_pattern" then
         maxWarnings = 2
         punishment = "kick"
+    elseif activityType == "timehack" or activityType == "weatherhack" then
+        maxWarnings = 1 -- Immediate action for environment manipulation
+        punishment = "ban"
     end
     
     if warningCount >= maxWarnings then

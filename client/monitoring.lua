@@ -8,6 +8,7 @@ local monitoringData = {
     godModeChecks = 0,
     speedHackChecks = 0,
     lastVehicleCheck = 0,
+    lastVehicleSpeed = 0, -- Added missing field
     suspiciousEvents = {},
     environmentChecks = {}
 }
