@@ -152,6 +152,10 @@ end
 -- Handle noclip detection with escalation based on consecutive violations
 function AnticheataDetections.HandleNoclipDetection(playerId, reason, detectionType)
     local playerData = AnticheataCore.GetPlayerData(playerId)
+    if not playerData then
+        return -- Player no longer exists, skip detection handling
+    end
+    
     local violationData = playerData.violations and playerData.violations[detectionType] or {consecutive = 1}
     
     -- Escalate punishment based on consecutive violations
