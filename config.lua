@@ -34,7 +34,13 @@ Config.Detection = {
             -- Add more zones as needed
         },
         maxHeight = 2000.0, -- Maximum allowed height
-        punishment = "kick"
+        punishment = "kick",
+        -- Spawn immunity settings
+        spawnImmunity = {
+            enabled = true,
+            duration = 15000, -- 15 seconds of immunity after spawn/respawn
+            undergroundOnly = true -- If true: only apply to Underground zone. If false: apply to ALL blacklisted zones
+        }
     },
     
     -- God Mode Detection
