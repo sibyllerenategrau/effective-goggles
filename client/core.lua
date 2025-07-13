@@ -38,6 +38,9 @@ end
 
 -- Start position monitoring
 function StartPositionMonitoring()
+    local lastHealth = 200
+    local wasDeadLastFrame = false
+    
     CreateThread(function()
         while isMonitoring do
             Wait(Config.Detection.Noclip.checkInterval)
@@ -51,6 +54,17 @@ function StartPositionMonitoring()
                 local onGround = CheckIfEntityOnGround(playerPed)
                 local health = GetEntityHealth(playerPed)
                 local armor = GetPedArmour(playerPed)
+                
+                -- Check for respawn (health went from 0 to > 0)
+                local isDead = health <= 0 or IsEntityDead(playerPed)
+                if wasDeadLastFrame and not isDead and health > 0 then
+                    -- Player just respawned
+                    TriggerServerEvent('anticheat:playerRespawned')
+                    if Config.EnableDebug then
+                        print("[Anticheat] Player respawned, resetting spawn immunity")
+                    end
+                end
+                wasDeadLastFrame = isDead
                 
                 -- Get vehicle data if in vehicle
                 local vehicleData = nil
@@ -68,6 +82,7 @@ function StartPositionMonitoring()
                 
                 lastPosition = position
                 lastUpdate = GetGameTimer()
+                lastHealth = health
             end
         end
     end)
@@ -190,6 +205,9 @@ AddEventHandler('anticheat:teleportToSafeLocation', function()
     
     -- Notify player
     ShowNotification("~r~Anticheat: ~w~You have been moved to a safe location")
+    
+    -- Notify server about the teleportation/respawn
+    TriggerServerEvent('anticheat:playerRespawned')
 end)
 
 -- Show notification

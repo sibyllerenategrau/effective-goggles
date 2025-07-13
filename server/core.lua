@@ -18,6 +18,11 @@ function AnticheataCore.InitializePlayer(playerId)
         connectionTime = GetGameTimer(),
         lastHealth = 200, -- Initialize with max health
         lastArmor = 0,
+        spawnImmunity = { -- Track spawn immunity
+            isActive = true,
+            startTime = GetGameTimer(),
+            duration = Config.Detection.Position.spawnImmunity.duration or 15000
+        },
         violations = { -- Initialize violation tracking
             noclip = {count = 0, consecutive = 0, lastViolation = 0},
             teleport = {count = 0, consecutive = 0, lastViolation = 0},
@@ -143,6 +148,42 @@ function AnticheataCore.NotifyAdmins(message)
     end
 end
 
+-- Check if player has spawn immunity
+function AnticheataCore.HasSpawnImmunity(playerId)
+    if not Config.Detection.Position.spawnImmunity.enabled then
+        return false
+    end
+    
+    local data = playerData[playerId]
+    if not data or not data.spawnImmunity then
+        return false
+    end
+    
+    local currentTime = GetGameTimer()
+    local timeSinceSpawn = currentTime - data.spawnImmunity.startTime
+    
+    -- Check if immunity period has expired
+    if timeSinceSpawn >= data.spawnImmunity.duration then
+        data.spawnImmunity.isActive = false
+        return false
+    end
+    
+    return data.spawnImmunity.isActive
+end
+
+-- Reset spawn immunity (call when player teleports or respawns)
+function AnticheataCore.ResetSpawnImmunity(playerId)
+    local data = playerData[playerId]
+    if data and data.spawnImmunity then
+        data.spawnImmunity.isActive = true
+        data.spawnImmunity.startTime = GetGameTimer()
+        
+        if Config.EnableDebug then
+            print(("[%s] Spawn immunity reset for player %s"):format(Config.ResourceName, GetPlayerName(playerId)))
+        end
+    end
+end
+
 -- Get player data
 function AnticheataCore.GetPlayerData(playerId)
     return playerData[playerId]
@@ -207,6 +248,13 @@ end)
 AddEventHandler('playerDropped', function(reason)
     local playerId = source
     AnticheataCore.CleanupPlayer(playerId)
+end)
+
+-- Handle player respawn (reset spawn immunity)
+RegisterServerEvent('anticheat:playerRespawned')
+AddEventHandler('anticheat:playerRespawned', function()
+    local playerId = source
+    AnticheataCore.ResetSpawnImmunity(playerId)
 end)
 
 -- Export functions

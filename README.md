@@ -25,6 +25,7 @@ Un système anticheat complet pour FiveM qui détecte les triches de noclip et a
 - **Zones interdites** : Vérification des positions dans des zones blacklistées
 - **Limite de hauteur** : Empêche les joueurs d'aller trop haut
 - **Validation souterraine** : Détecte les joueurs sous la map
+- **Immunité de spawn** : Protège les joueurs des faux positifs lors du spawn (NOUVEAU)
 
 ## Installation
 
@@ -69,6 +70,13 @@ Config.Detection.Invisibility = {
 Config.Detection.Position.blacklistedZones = {
     {x = 0, y = 0, z = -1000, radius = 8000, name = "Underground"},
     -- Ajoutez d'autres zones selon vos besoins
+}
+
+-- Configuration de l'immunité de spawn (NOUVEAU)
+Config.Detection.Position.spawnImmunity = {
+    enabled = true,
+    duration = 15000, -- 15 secondes d'immunité après spawn/respawn
+    undergroundOnly = true -- Applique l'immunité uniquement à la zone souterraine
 }
 ```
 
@@ -138,6 +146,13 @@ anticheat.admin
 - Vérifie si le joueur est dans des zones autorisées
 - Contrôle les limites de hauteur
 - Détecte les positions impossibles (sous la map)
+- **Protection de spawn** : Immunité temporaire contre la détection souterraine
+
+### 6. Système d'Immunité de Spawn
+- **Prévention des faux positifs** : Évite les sanctions lors du spawn légitime
+- **Durée configurable** : Par défaut 15 secondes d'immunité
+- **Ciblage spécifique** : Appliqué uniquement aux zones souterraines
+- **Réinitialisation automatique** : Se réactive après respawn ou téléportation
 
 ## Système de Sanctions
 

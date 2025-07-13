@@ -186,6 +186,22 @@ function AnticheataDetections.CheckPosition(playerId, position)
     -- Check if position is in blacklisted zone
     local inBlacklistedZone, zoneName = Utils.IsPositionInBlacklistedZone(position)
     if inBlacklistedZone then
+        -- Check for spawn immunity if this is an underground zone
+        local isUndergroundZone = zoneName == "Underground"
+        local hasSpawnImmunity = AnticheataCore.HasSpawnImmunity(playerId)
+        
+        if isUndergroundZone and hasSpawnImmunity and Config.Detection.Position.spawnImmunity.undergroundOnly then
+            -- Player has spawn immunity for underground zones, skip detection
+            if Config.EnableDebug then
+                print(("[%s] Player %s in underground zone but has spawn immunity (%.1fs remaining)"):format(
+                    Config.ResourceName, 
+                    GetPlayerName(playerId),
+                    (playerData.spawnImmunity.duration - (GetGameTimer() - playerData.spawnImmunity.startTime)) / 1000.0
+                ))
+            end
+            return
+        end
+        
         local reason = ("Player in blacklisted zone: %s"):format(zoneName)
         local warningCount = AnticheataCore.AddWarning(playerId, "position", reason)
         
@@ -194,6 +210,8 @@ function AnticheataDetections.CheckPosition(playerId, position)
         else
             -- Teleport player to a safe location
             TriggerClientEvent('anticheat:teleportToSafeLocation', playerId)
+            -- Reset spawn immunity after teleporting to safe location
+            AnticheataCore.ResetSpawnImmunity(playerId)
         end
     end
     
